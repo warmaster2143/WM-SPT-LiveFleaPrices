@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/brace-style */
 import type { DependencyContainer } from "tsyringe";
 
 import type { ILogger } from "@spt-aki/models/spt/utils/ILogger";
@@ -10,7 +11,6 @@ import * as path from "node:path";
 class Mod implements IPostDBLoadModAsync
 {
     private static container: DependencyContainer;
-    private static updateTimer: NodeJS.Timeout;
     private static config: Config;
     private static configPath = path.resolve(__dirname, "../config/config.json");
     private static pricesPath = path.resolve(__dirname, "../config/prices.json");
@@ -26,21 +26,11 @@ class Mod implements IPostDBLoadModAsync
         const priceTable = databaseServer.getTables().templates.prices;
         Mod.originalPrices = structuredClone(priceTable);
 
-        // Update prices on startup
-        const currentTime = Math.floor(Date.now() / 1000);
-        let fetchPrices = false;
-        if (currentTime > Mod.config.nextUpdate)
-        {
-            fetchPrices = true;
-        }
-
-        if (!await Mod.updatePrices(fetchPrices))
+        // Update prices on startup if config allows fetching
+        if (!await Mod.updatePrices(Mod.config.fetchPrices))
         {
             return;
         }
-
-        // Setup a refresh interval to update once every hour
-        Mod.updateTimer = setInterval(Mod.updatePrices, (60 * 60 * 1000));
     }
 
     static async updatePrices(fetchPrices = true): Promise<boolean>
@@ -56,25 +46,29 @@ class Mod implements IPostDBLoadModAsync
         // Fetch the latest prices.json if we're triggered with fetch enabled, or the prices file doesn't exist
         if (fetchPrices || !fs.existsSync(Mod.pricesPath))
         {
-            logger.info("Fetching Flea Prices...");
-            const response = await fetch("https://raw.githubusercontent.com/DrakiaXYZ/SPT-LiveFleaPriceDB/main/prices.json");
+            if (fetchPrices) {
+                logger.info("Fetching Flea Prices...");
+                const response = await fetch("https://raw.githubusercontent.com/DrakiaXYZ/SPT-LiveFleaPriceDB/main/prices.json");
 
-            // If the request failed, disable future updating
-            if (!response?.ok)
-            {
-                logger.error(`Error fetching flea prices: ${response.status} (${response.statusText})`);
-                clearInterval(Mod.updateTimer);
+                // If the request failed, disable future updating
+                if (!response?.ok)
+                {
+                    logger.error(`Error fetching flea prices: ${response.status} (${response.statusText})`);
+                    return false;
+                }
+
+                prices = await response.json();
+
+                // Store the prices to disk for next time
+                fs.writeFileSync(Mod.pricesPath, JSON.stringify(prices));
+
+                // Update config file with the next update time
+                Mod.config.nextUpdate = Math.floor(Date.now() / 1000) + 3600;
+                fs.writeFileSync(Mod.configPath, JSON.stringify(Mod.config, null, 4));
+            } else {
+                logger.info("Fetching prices is disabled by config.");
                 return false;
             }
-
-            prices = await response.json();
-
-            // Store the prices to disk for next time
-            fs.writeFileSync(Mod.pricesPath, JSON.stringify(prices));
-
-            // Update config file with the next update time
-            Mod.config.nextUpdate = Math.floor(Date.now() / 1000) + 3600;
-            fs.writeFileSync(Mod.configPath, JSON.stringify(Mod.config, null, 4));
         }
         // Otherwise, read the file from disk
         else
@@ -123,6 +117,7 @@ interface Config
 {
     nextUpdate: number,
     maxIncreaseMult: number,
+    fetchPrices: boolean // New configuration setting to control price fetching
 }
 
 module.exports = { mod: new Mod() }

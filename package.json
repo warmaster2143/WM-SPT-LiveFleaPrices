@@ -1,9 +1,9 @@
 {
-    "name": "LiveFleaPrices",
+    "name": "WM-LiveFleaPrices",
     "version": "1.1.1",
     "main": "src/mod.js",
     "license": "MIT",
-    "author": "DrakiaXYZ",
+    "author": "DrakiaXYZ(Modified by Warmaster2143)",
     "akiVersion": "~3.8",
     "scripts": {
         "setup": "npm i",
